@@ -1,0 +1,248 @@
+### Data Preparations
+
+```{r message=FALSE, results=FALSE, warning=FALSE, echo=FALSE}
+#install.packages("glmnet") 
+library(glmnet) 
+#install.packages("caret") 
+library(caret)
+#install.packages("caretEnsemble") 
+library(caretEnsemble)
+#install.packages("elasticnet") 
+library(elasticnet) 
+#install.packages("psych") 
+library(psych) 
+library(tidyverse)
+library(dplyr)
+library(plotrix)
+library(InformationValue)
+#install.packages('tinytex')
+library(tinytex)
+
+#Loading files
+Brazil_data <- read.csv("C:/Users/tamir/Downloads/Brazil_data.csv")
+```
+
+### Task 1
+
+```{r message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+House_services = Brazil_data$AGUA_ESGOTO + Brazil_data$T_SLUZ 
+Brazil_data$House_services <- House_services
+#Task 1.1 
+Task1.1_lm <- lm( R1040 ~ ESPVIDA + FECTOT + MORT1 + E_ANOSESTUDO + RAZDEP +
+                    SOBRE60 + T_ANALF15M + T_MED18M + PRENTRAB + RDPC + T_ATIV2529 + 
+                    T_DES2529 + TRABSC + T_DENS + AGUA_ESGOTO + PAREDE + T_M10A14CF +
+                    T_NESTUDA_NTRAB_MMEIO + T_OCUPDESLOC_1 + T_SLUZ + HOMEMTOT +
+                    MULHERTOT + pesoRUR + pesotot + pesourb + House_services,
+                    data=Brazil_data) 
+summary(Task1.1_lm)
+model_1<-lm(R1040 ~ 1, data=Brazil_data) #model with the intercept only 
+summary(model_1)
+#forward selection
+fwd_sel <-step(model_1, direction="forward", scope=formula(Task1.1_lm)) 
+# after forward selection, we have the relevant varible set as follows:
+#finallm_1.1 <- lm(formula = R1040 ~ House_services + T_SLUZ + T_DENS + RDPC +
+#RAZDEP + T_ATIV2529 + pesoRUR + T_NESTUDA_NTRAB_MMEIO + FECTOT + E_ANOSESTUDO +
+#PAREDE + MORT1 + ESPVIDA + SOBRE60 + T_DES2529 + AGUA_ESGOTO -1, 
+#data = Brazil_data, singular.ok=FALSE)
+# with house_services variable, it returns error
+#TASK 1.2
+#alpha is 1, Elastic net reduces to Lasso
+y <- Brazil_data$R1040
+x <- data.matrix(Brazil_data[, c("T_SLUZ","T_DENS", "RDPC", "RAZDEP", "T_ATIV2529",
+                                 "pesoRUR", "T_NESTUDA_NTRAB_MMEIO", "FECTOT",
+                                 "E_ANOSESTUDO", "PAREDE", "MORT1", "ESPVIDA",
+                                 "SOBRE60", "T_DES2529", "AGUA_ESGOTO")])
+cvfit <- cv.glmnet(x, y, type.measure = "mse", nfolds = 10) 
+best_lambda <- cvfit$lambda.min
+best_lambda 
+# k-fold cross-validation to find optimal lambda value
+print(cvfit)
+lasso_task1.2 <- glmnet(x, y, alpha = 1, lambda = best_lambda)
+coef(lasso_task1.2)
+lasso_task1.2
+```
+
+### Task 2
+
+```{r message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+#prepare data
+fitControl <- trainControl(method = "repeatedcv", number = 10,
+                           repeats = 5, verboseIter = TRUE)
+#2.1 create training and test sample
+set.seed(100)
+N<-nrow(Brazil_data) 
+s<-3150 
+s1<-sample(N,s)
+train <- Brazil_data[s1,]
+test <- Brazil_data[-s1,]
+y<-as.vector(train$R1040)
+X<-model.matrix(R1040~ESPVIDA+FECTOT+MORT1+RAZDEP+SOBRE60+E_ANOSESTUDO+T_ANALF15M
+                +T_MED18M+PRENTRAB+RDPC+T_ATIV2529+T_DES2529+TRABSC+T_DENS
+                +AGUA_ESGOTO+PAREDE+T_M10A14CF+T_NESTUDA_NTRAB_MMEIO
+                +T_OCUPDESLOC_1+T_SLUZ+HOMEMTOT+MULHERTOT+pesoRUR+pesotot
+                +pesourb, data=train)
+X[,2:26]<-scale(X[,2:26])#scale
+X<-X[,-1]
+#2.2 train set run both models
+#LASSO
+result.lasso    <- glmnet(X,y,alpha=1,lambda=10^seq(-2,6,length.out=50))
+result.lasso.cv <- cv.glmnet(X,y,alpha=1,lambda=10^seq(-2,5,length.out=50),
+                             nfolds=10)
+print(result.lasso.cv$lambda.min)
+print(result.lasso.cv$lambda.1se)
+plot(result.lasso.cv)
+#Elastic net
+set.seed(100)
+fitControl <- trainControl(method = "repeatedcv", number = 10,
+                           repeats = 5, verboseIter = TRUE)
+#verboseIter=TRUE->shows all the repeated cvs on your console
+set.seed(100)
+#to get alpha
+net.for.alpha <- train(R1040~ESPVIDA+FECTOT+MORT1+RAZDEP+SOBRE60+
+                         E_ANOSESTUDO+T_ANALF15M+T_MED18M+PRENTRAB+RDPC+
+                         T_ATIV2529+T_DES2529+TRABSC+T_DENS+AGUA_ESGOTO+
+                         PAREDE+T_M10A14CF+T_NESTUDA_NTRAB_MMEIO+T_OCUPDESLOC_1
+                       +T_SLUZ+HOMEMTOT+MULHERTOT+pesoRUR+pesotot+pesourb,train,
+                       method = 'glmnet',
+                      tuneGrid = expand.grid(alpha = seq(0.0001, 1, length =10),
+                                            lambda = seq(0.0001, 1, length =10)),
+                       trControl = fitControl)
+result.net <- glmnet(X,y,alpha=0.111,lambda=10^seq(-2,6,length.out=50))
+result.net.cv <- cv.glmnet(X,y,alpha=0.111,lambda=10^seq(-2,6,length.out=50),
+                           nfolds=10)
+print(result.net.cv$lambda.min)
+print(result.net.cv$lambda.1se)
+#2.3
+#Final run with best cross validated alpha and lambda
+result.lasso.best <- glmnet(X,y,alpha=1,lambda=result.lasso.cv$lambda.1se)
+round(result.lasso.best$beta,digits=4)
+result.net.best <- glmnet(X,y,alpha=0.111,lambda=result.net.cv$lambda.1se)
+round(result.net.best$beta,digits=4)
+#2.4
+#plot coefficient path
+par(mar = c(0.5, 0.5, 0.5, 0.5))
+plot(result.lasso,xvar="lambda",label=TRUE,cex=.4)
+legend("bottomright",lwd=.7,col=1:10,bg="white",
+       legend=pasteCols(t(cbind(1:ncol(X),"",colnames(X),cex=.4))))
+#elastic net
+plot(result.net,xvar="lambda",label=TRUE)
+legend("bottomright",lwd=1,col=1:6,bg="white",
+       legend=pasteCols(t(cbind(1:ncol(X),"",colnames(X),cex=.4))))
+#2.5 
+yt<-as.vector(test$R1040)
+Xt<-model.matrix(R1040~ESPVIDA+FECTOT+MORT1+RAZDEP+SOBRE60+E_ANOSESTUDO+T_ANALF15M
+                 +T_MED18M+PRENTRAB+RDPC+T_ATIV2529+T_DES2529+TRABSC+T_DENS
+                 +AGUA_ESGOTO+PAREDE+T_M10A14CF+T_NESTUDA_NTRAB_MMEIO
+                 +T_OCUPDESLOC_1+T_SLUZ+HOMEMTOT+MULHERTOT+pesoRUR+pesotot
+                 +pesourb, data=test)
+Xt[,2:26]<-scale(Xt[,2:26])#scale
+Xt<-Xt[,-1]
+#LASSO.1se
+saveRDS(result.lasso.best, "result.lasso.best.rds")
+lasso.model.1se <- readRDS("result.lasso.best.rds")
+predict.lasso.1se <- predict(lasso.model.1se, Xt)
+LASSO.1se.RMSE<-sqrt(mean((test$R1040-predict.lasso.1se)^2))
+#LASSO.min
+result.lasso.min <- glmnet(X,y,alpha=1,lambda=result.lasso.cv$lambda.min)
+saveRDS(result.lasso.min, "result.lasso.min.rds")
+lasso.model.min <- readRDS("result.lasso.min.rds")
+predict.lasso.min <- predict(lasso.model.min, Xt)
+LASSO.min.RMSE<-sqrt(mean((test$R1040-predict.lasso.min)^2))
+#Net.1se
+saveRDS(result.net.best, "result.net.best.rds")
+net.model.1se <- readRDS("result.net.best.rds")
+predict.net.1se <- predict(net.model.1se, Xt)
+net.1se.RMSE<-sqrt(mean((test$R1040-predict.net.1se)^2))
+#Net.min
+result.net.min <- glmnet(X,y,alpha=0.111,lambda=result.net.cv$lambda.min)
+saveRDS(result.net.min, "result.net.min.rds")
+net.model.min <- readRDS("result.net.min.rds")
+predict.net.min <- predict(net.model.min, Xt)
+net.min.RMSE<-sqrt(mean((test$R1040-predict.net.min)^2))
+#Compare the quality through using test sample
+Weights <- cbind(LASSO.1se.RMSE,LASSO.min.RMSE,net.1se.RMSE,net.min.RMSE)
+colnames(Weights) <- c("LASSO.1se.RMSE","LASSO.min.RMSE","net.1se.RMSE","net.min.RMSE")
+round(Weights, digits = 4)
+```
+
+### Task 3
+
+```{r message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+#data
+predict.5 <- read.csv("C:/Users/tamir/Downloads/Brazil_prediction.csv")
+y.p<-as.vector(predict.5$R1040)
+X.p<-model.matrix(R1040~ESPVIDA+FECTOT+MORT1+RAZDEP+SOBRE60+E_ANOSESTUDO+T_ANALF15M
+                  +T_MED18M+PRENTRAB+RDPC+T_ATIV2529+T_DES2529+TRABSC+T_DENS
+                  +AGUA_ESGOTO+PAREDE+T_M10A14CF+T_NESTUDA_NTRAB_MMEIO
+                  +T_OCUPDESLOC_1+T_SLUZ+HOMEMTOT+MULHERTOT+pesoRUR+pesotot
+                  +pesourb, data=predict.5)
+#scale
+X.p[,2:26]<-scale(X.p[,2:26])
+X.p<-X.p[,-1]
+#predict
+predict.net.1se <- predict(net.model.1se, X.p)
+X.p.net.1se.RMSE<-sqrt(mean((predict.5$R1040-predict.net.1se)^2))
+```
+
+### Task 4
+
+```{r message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+#4.1
+poor <- ifelse(Brazil_data$R1040 > 9.5, 1, 0)
+Brazil_data$poor <-poor
+set.seed(100) #separate 2 sets
+N<-nrow(Brazil_data) 
+s<-3150 
+s1<-sample(N,s)
+train2 <- Brazil_data[s1,]
+test2 <- Brazil_data[-s1,]
+yt2<-as.vector(train2$poor)
+Xt2<-model.matrix(poor~ESPVIDA+FECTOT+MORT1+RAZDEP+SOBRE60+E_ANOSESTUDO+T_ANALF15M
+                  +T_MED18M+PRENTRAB+RDPC+T_ATIV2529+T_DES2529+TRABSC+T_DENS
+                  +AGUA_ESGOTO+PAREDE+T_M10A14CF+T_NESTUDA_NTRAB_MMEIO
+                  +T_OCUPDESLOC_1+T_SLUZ+HOMEMTOT+MULHERTOT+pesoRUR+pesotot
+                  +pesourb, data=train2)
+Xt2[,2:26]<-scale(Xt2[,2:26])#scale
+Xt2<-Xt2[,-1]
+result.ridge.cv <- cv.glmnet(Xt2, yt2, 
+                             alpha=0,
+                             lambda=10^seq(-5,10,length.out=50),
+                             nfolds=10,
+                             family = "binomial")
+print(result.ridge.cv$lambda.min)
+print(result.ridge.cv$lambda.1se)
+#final model
+result.ridge.best <- glmnet(Xt2,yt2,alpha=0,lambda=result.ridge.cv$lambda.1se)
+round(result.ridge.best$beta,digits=5)
+#use test set to investigate the predictive performance
+yt3<-as.vector(test2$poor)
+Xt3<-model.matrix(poor~ESPVIDA+FECTOT+MORT1+RAZDEP+SOBRE60+E_ANOSESTUDO+T_ANALF15M
+                  +T_MED18M+PRENTRAB+RDPC+T_ATIV2529+T_DES2529+TRABSC+T_DENS
+                  +AGUA_ESGOTO+PAREDE+T_M10A14CF+T_NESTUDA_NTRAB_MMEIO
+                  +T_OCUPDESLOC_1+T_SLUZ+HOMEMTOT+MULHERTOT+pesoRUR+pesotot
+                  +pesourb, data=test2)
+Xt3[,2:26]<-scale(Xt3[,2:26]) #scale
+Xt3<-Xt3[,-1]
+#lambda min
+result.ridge.min <- glmnet(Xt3,yt3,alpha=0,lambda=result.ridge.cv$lambda.min)
+saveRDS(result.ridge.min, "result.ridge.min")
+result.ridge.min <- readRDS("result.ridge.min")
+predict.test.min <- predict(result.ridge.min, Xt3)
+optimal.min <- optimalCutoff(test2$poor, predict.test.min)[1]
+pred.min<-ifelse(predict.test.min>=optimal.min,"yes","no")
+pred.min<-factor(pred.min,levels = c("no","yes"),order=TRUE)
+f.min<-table(test2$poor,pred.min)
+result.ridge.min$beta
+#lambda 1se
+result.ridge.1se <- glmnet(Xt3,yt3,alpha=0,lambda=result.ridge.cv$lambda.1se)
+saveRDS(result.ridge.1se, "result.ridge.1se")
+result.ridge.1se <- readRDS("result.ridge.1se")
+predict.test.1se <- predict(result.ridge.1se, Xt3)
+optimal.1se <- optimalCutoff(test2$poor, predict.test.1se)[1]
+probabilities <-result.ridge.1se %>%
+                predict(newx=Xt3)
+pred.1se<-ifelse(predict.test.1se>=optimal.1se,"yes","no")
+pred.1se<-factor(pred.1se,levels = c("no","yes"),order=TRUE)
+f.1se<-table(test2$poor,pred.1se)
+result.ridge.1se$beta
+```
