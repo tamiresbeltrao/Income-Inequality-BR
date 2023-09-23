@@ -5,7 +5,7 @@ The objective of this project was to evaluate important variables to explain Bra
 
 ## Data Source
 
-Cross-sectional data set with 4500 observations of Brazilian cities composed by selected columns from the official Brazilian National Census from 2010.
+Cross-sectional data set consisting of of 4500 observations of Brazilian cities and selected columns from the official Brazilian National Census from 2010.
 
 ## Methods
 
